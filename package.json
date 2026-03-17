@@ -1,0 +1,11 @@
+{
+  "name": "store-cases-site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787"
+  },
+  "devDependencies": {
+    "wrangler": "^3.89.0"
+  }
+}
