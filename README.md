@@ -44,8 +44,11 @@ npx wrangler deploy
 - `GET /cases/:id`：案例详情直达路由（页面内自动弹出对应案例详情）
 - `GET /insights`：总结经验页
 - `GET /api/cases`：返回 JSON 数据
+<<<<<<< codex/fix-deployment-issues-on-cloudflare-workers-fkzlly
 
 
 ## 部署配置
 
 - 当前 Workers 项目名：`store-cases-cn`（在 `wrangler.toml` 中配置）
+=======
+>>>>>>> main
