@@ -2,14 +2,44 @@
 
 基于 `data.js` 的 Cloudflare Workers 站点，包含：
 
-- `/cases`：案例展示（支持按结果、分类筛选 + 关键词搜索）
+- `/`：案例展示首页（支持按结果、分类筛选 + 关键词搜索）
 - `/insights`：总结经验（自动统计高频分类/风险信号）
+- `/api/cases`：案例数据接口
 
-## 本地运行
+## 本地开发
 
 ```bash
 npm install
 npm run dev
 ```
 
-打开 `http://localhost:8787/cases`。
+默认访问：`http://localhost:8787/`。
+
+## 直接部署到 Cloudflare Workers
+
+1. 安装依赖
+
+```bash
+npm install
+```
+
+2. 登录 Cloudflare（首次部署需要）
+
+```bash
+npx wrangler login
+```
+
+3. 部署
+
+```bash
+npx wrangler deploy
+```
+
+部署成功后会得到 `*.workers.dev` 域名，访问根路径 `/` 即可进入案例页。
+
+## 路由说明
+
+- `GET /`：案例页（默认入口）
+- `GET /cases`：兼容路由，返回同一页面
+- `GET /insights`：总结经验页
+- `GET /api/cases`：返回 JSON 数据
