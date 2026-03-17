@@ -128,11 +128,13 @@ const appHtml = `<!doctype html>
       el.querySelectorAll('.chip').forEach(function(btn){ btn.addEventListener('click', function(){ onClick(btn.dataset.value); }); });
     }
 
-    function syncTabs() {
+    function syncTabs(push) {
       document.querySelectorAll('.tab').forEach(function(btn){ btn.classList.toggle('active', btn.dataset.view === state.view); });
       casesView.style.display = state.view === 'cases' ? 'block' : 'none';
       insightsView.style.display = state.view === 'insights' ? 'block' : 'none';
-      history.replaceState({}, '', state.view === 'cases' ? '/cases' : '/insights');
+      if (push) {
+        history.pushState({}, '', state.view === 'cases' ? '/' : '/insights');
+      }
     }
 
     function render() {
@@ -148,7 +150,7 @@ const appHtml = `<!doctype html>
     }
 
     searchEl.addEventListener('input', function(e){ state.search = e.target.value; renderCases(); });
-    document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(); }); });
+    document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(true); }); });
     fetch('/api/cases').then(function(r){ return r.json(); }).then(function(data){ state.cases = data; if (location.pathname.indexOf('insights') >= 0) state.view = 'insights'; render(); });
   </script>
 </body>
