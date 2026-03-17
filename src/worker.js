@@ -33,14 +33,24 @@ const appHtml = `<!doctype html>
     .muted { color:var(--muted); }
     .tags { display:flex; flex-wrap:wrap; gap:6px; }
     .tag { background:#f3f4f6; color:#4b5563; border-radius:999px; padding:4px 10px; font-size:12px; }
+    .detail-btn { border:0; border-radius:10px; background:#eaf1ff; color:#1d4ed8; font-weight:700; padding:10px 12px; cursor:pointer; }
     .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
     .stat,.panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px; }
     .stat .v { font-size:26px; font-weight:800; margin-top:8px; }
     .panel h3 { margin:0 0 10px; }
     .panel ul { margin:0; padding-left:18px; line-height:1.7; color:#374151; }
     .empty { text-align:center; color:#6b7280; padding:40px 12px; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.52); display:none; align-items:center; justify-content:center; padding:16px; z-index:100; }
+    .modal { width:min(860px,100%); max-height:88vh; overflow:auto; background:#fff; border-radius:16px; border:1px solid var(--line); }
+    .modal-head { position:sticky; top:0; background:#fff; z-index:1; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:16px; border-bottom:1px solid var(--line); }
+    .modal-title { margin:0; font-size:22px; }
+    .close-btn { border:0; background:#eef2ff; color:#1d4ed8; border-radius:10px; padding:8px 12px; cursor:pointer; font-weight:700; }
+    .modal-body { padding:16px; display:grid; gap:12px; }
+    .detail-block { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
+    .detail-block h4 { margin:0 0 8px; font-size:15px; }
+    .detail-text { margin:0; color:#334155; line-height:1.75; white-space:pre-wrap; }
     @media (max-width:980px){ .list,.summary-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
-    @media (max-width:680px){ .container{ padding:14px 10px 26px; } .header h1{ font-size:22px; } .list,.summary-grid{ grid-template-columns:1fr; } .title{ font-size:22px; } }
+    @media (max-width:680px){ .container{ padding:14px 10px 26px; } .header h1{ font-size:22px; } .list,.summary-grid{ grid-template-columns:1fr; } .title{ font-size:22px; } .modal-title{ font-size:18px; } }
   </style>
 </head>
 <body>
@@ -53,6 +63,18 @@ const appHtml = `<!doctype html>
     </section>
     <section id="insights-view" style="display:none;"></section>
   </div>
+  <div id="detail-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="modal-title" class="modal-title"></h3>
+          <div id="modal-meta" class="meta"></div>
+        </div>
+        <button id="close-modal" class="close-btn" type="button">关闭</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
   <script>
     var state = { cases: [], category: '全部', result: '全部', search: '', view: 'cases' };
     var listEl = document.getElementById('list');
@@ -62,6 +84,14 @@ const appHtml = `<!doctype html>
     var searchEl = document.getElementById('search');
     var casesView = document.getElementById('cases-view');
     var insightsView = document.getElementById('insights-view');
+    var modalEl = document.getElementById('detail-modal');
+    var modalTitleEl = document.getElementById('modal-title');
+    var modalMetaEl = document.getElementById('modal-meta');
+    var modalBodyEl = document.getElementById('modal-body');
+
+    function esc(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
 
     function topItems(items, key, size) {
       var m = new Map();
@@ -111,13 +141,44 @@ const appHtml = `<!doctype html>
       });
     }
 
+    function renderDetailBlock(title, content) {
+      if (!content) return '';
+      return '<section class="detail-block"><h4>' + esc(title) + '</h4><p class="detail-text">' + esc(content) + '</p></section>';
+    }
+
+    function openDetail(caseId) {
+      var item = state.cases.find(function(x){ return String(x.id) === String(caseId); });
+      if (!item) return;
+      var points = (item.keyPoints || []).length ? '<section class="detail-block"><h4>关键点</h4><p class="detail-text">' + esc((item.keyPoints || []).join('、')) + '</p></section>' : '';
+      modalTitleEl.textContent = item.title || '案例详情';
+      modalMetaEl.innerHTML = '<b>结论：</b>' + esc(item.resultText || '未知') + ' &nbsp; <b>品类：</b>' + esc(item.category || '未知') + ' &nbsp; <b>地点：</b>' + esc(item.location || '未知') + ' &nbsp; <b>投资：</b>' + esc(item.investment || '未知');
+      modalBodyEl.innerHTML = [
+        renderDetailBlock('案例摘要', item.summary),
+        renderDetailBlock('背景', item.background),
+        renderDetailBlock('核心问题', item.problem),
+        renderDetailBlock('过程分析', item.process),
+        renderDetailBlock('结果详情', item.resultDetail),
+        renderDetailBlock('复盘建议', item.reflection),
+        points
+      ].join('');
+      modalEl.style.display = 'flex';
+      modalEl.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDetail() {
+      modalEl.style.display = 'none';
+      modalEl.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
     function renderCases() {
       var list = filteredCases();
       listEl.innerHTML = list.map(function(item){
-        var tags = (item.tags || []).slice(0,5).map(function(tag){ return '<span class="tag">' + tag + '</span>'; }).join('');
+        var tags = (item.tags || []).slice(0,5).map(function(tag){ return '<span class="tag">' + esc(tag) + '</span>'; }).join('');
         return '<article class="card">'
-          + '<div class="card-head ' + item.result + '"><span class="badge">' + item.resultText + '</span><h2 class="title">' + item.title + '</h2></div>'
-          + '<div class="card-body"><div class="meta"><b>品类：</b>' + (item.category || '未知') + ' &nbsp; <b>地点：</b>' + (item.location || '未知') + ' &nbsp; <b>投资：</b>' + (item.investment || '未知') + '</div><div class="muted">' + (item.summary || '暂无摘要') + '</div><div class="tags">' + tags + '</div></div>'
+          + '<div class="card-head ' + item.result + '"><span class="badge">' + esc(item.resultText) + '</span><h2 class="title">' + esc(item.title) + '</h2></div>'
+          + '<div class="card-body"><div class="meta"><b>品类：</b>' + esc(item.category || '未知') + ' &nbsp; <b>地点：</b>' + esc(item.location || '未知') + ' &nbsp; <b>投资：</b>' + esc(item.investment || '未知') + '</div><div class="muted">' + esc(item.summary || '暂无摘要') + '</div><div class="tags">' + tags + '</div><button type="button" class="detail-btn" data-case-id="' + esc(item.id) + '">查看详情</button></div>'
           + '</article>';
       }).join('');
       emptyEl.style.display = list.length ? 'none' : 'block';
@@ -151,6 +212,15 @@ const appHtml = `<!doctype html>
 
     searchEl.addEventListener('input', function(e){ state.search = e.target.value; renderCases(); });
     document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(true); }); });
+    listEl.addEventListener('click', function(e){
+      var btn = e.target.closest('.detail-btn');
+      if (!btn) return;
+      openDetail(btn.dataset.caseId);
+    });
+    modalEl.addEventListener('click', function(e){ if (e.target === modalEl) closeDetail(); });
+    document.getElementById('close-modal').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDetail(); });
+
     fetch('/api/cases').then(function(r){ return r.json(); }).then(function(data){ state.cases = data; if (location.pathname.indexOf('insights') >= 0) state.view = 'insights'; render(); });
   </script>
 </body>
