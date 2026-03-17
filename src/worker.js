@@ -23,17 +23,17 @@ const appHtml = `<!doctype html>
     .chip.active { border-color:var(--brand); color:var(--brand); background:#eff6ff; }
     .search { border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; font-size:14px; width:100%; }
     .list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); }
-    .card-head { color:#fff; padding:14px 16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); display:flex; flex-direction:column; min-height:420px; }
+    .card-head { color:#fff; padding:14px 16px; min-height:128px; display:flex; flex-direction:column; justify-content:space-between; }
     .card-head.success { background:var(--success); } .card-head.warning { background:var(--warning); } .card-head.failure { background:var(--failure); }
     .badge { display:inline-block; font-size:12px; font-weight:700; padding:4px 10px; background:rgba(255,255,255,.24); border-radius:999px; }
-    .title { margin:10px 0 0; font-size:28px; line-height:1.25; font-weight:800; }
-    .card-body { padding:14px 16px 16px; display:grid; gap:10px; }
+    .title { margin:10px 0 0; font-size:28px; line-height:1.25; font-weight:800; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .card-body { padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px; flex:1; }
     .meta { color:#374151; line-height:1.8; }
-    .muted { color:var(--muted); }
-    .tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .muted { color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; min-height:66px; }
+    .tags { display:flex; flex-wrap:wrap; gap:6px; min-height:56px; align-content:flex-start; }
     .tag { background:#f3f4f6; color:#4b5563; border-radius:999px; padding:4px 10px; font-size:12px; }
-    .detail-btn { border:0; border-radius:10px; background:#eaf1ff; color:#1d4ed8; font-weight:700; padding:10px 12px; cursor:pointer; }
+    .detail-btn { border:0; border-radius:10px; background:#eaf1ff; color:#1d4ed8; font-weight:700; padding:10px 12px; cursor:pointer; margin-top:auto; }
     .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
     .stat,.panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px; }
     .stat .v { font-size:26px; font-weight:800; margin-top:8px; }
@@ -127,6 +127,8 @@ const appHtml = `<!doctype html>
         + '<div class="panel"><h3>高频行业分类（TOP10）</h3><ul>' + li(topCategories, function(v){ return '：' + v + ' 条'; }) + '</ul></div>'
         + '<div class="panel"><h3>常见风险信号（建议重点排查）</h3><ul>' + li(riskPoints, function(v){ return '（' + v + ' 次）'; }) + '</ul></div>'
         + '<div class="panel"><h3>成功案例中的正向信号</h3><ul>' + li(goodSignals, function(v){ return '（' + v + ' 次）'; }) + '</ul></div>'
+        + '<div class="panel"><h3>失败共性总结（为什么会失败）</h3><ul>' + li(riskPoints, function(v){ return '（' + v + ' 次）'; }) + '</ul><p class="detail-text">多数失败并不是单点问题，而是“人流判断失真 + 合同条款被动 + 预算结构失衡 + 运营准备不足”叠加导致。</p></div>'
+        + '<div class="panel"><h3>怎么做才更稳（避免失败）</h3><ul><li>先做小样本验证：连续多时段统计人流、客单、转化，满足阈值再签约。</li><li>合同先行：把独家经营、租金递增、违约责任写成可执行条款，避免口头承诺。</li><li>预算分层：保留至少3-6个月运营现金流，避免把资金都压在押金/装修/囤货。</li><li>先跑通最小模型：先做高频刚需SKU，稳定后再扩品类和增项目。</li></ul></div>'
         + '<div class="panel"><h3>我的建议（加分项）</h3><ul><li>优先验证“人流 × 转化率 × 客单价”三要素，再决定是否签约。</li><li>对“独家经营、租金递增、违约责任”等核心条款做合同锁定。</li><li>将每个案例沉淀为“可复制检查清单”，开店前逐条核对。</li></ul></div>';
     }
 
@@ -176,7 +178,7 @@ const appHtml = `<!doctype html>
       var list = filteredCases();
       listEl.innerHTML = list.map(function(item){
         var tags = (item.tags || []).slice(0,5).map(function(tag){ return '<span class="tag">' + esc(tag) + '</span>'; }).join('');
-        return '<article class="card">'
+        return '<article class="card" data-case-id="' + esc(item.id) + '">'
           + '<div class="card-head ' + item.result + '"><span class="badge">' + esc(item.resultText) + '</span><h2 class="title">' + esc(item.title) + '</h2></div>'
           + '<div class="card-body"><div class="meta"><b>品类：</b>' + esc(item.category || '未知') + ' &nbsp; <b>地点：</b>' + esc(item.location || '未知') + ' &nbsp; <b>投资：</b>' + esc(item.investment || '未知') + '</div><div class="muted">' + esc(item.summary || '暂无摘要') + '</div><div class="tags">' + tags + '</div><button type="button" class="detail-btn" data-case-id="' + esc(item.id) + '">查看详情</button></div>'
           + '</article>';
@@ -213,9 +215,9 @@ const appHtml = `<!doctype html>
     searchEl.addEventListener('input', function(e){ state.search = e.target.value; renderCases(); });
     document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(true); }); });
     listEl.addEventListener('click', function(e){
-      var btn = e.target.closest('.detail-btn');
-      if (!btn) return;
-      openDetail(btn.dataset.caseId);
+      var target = e.target.closest('[data-case-id]');
+      if (!target) return;
+      openDetail(target.dataset.caseId);
     });
     modalEl.addEventListener('click', function(e){ if (e.target === modalEl) closeDetail(); });
     document.getElementById('close-modal').addEventListener('click', closeDetail);
