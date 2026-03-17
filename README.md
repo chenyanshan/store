@@ -41,5 +41,6 @@ npx wrangler deploy
 
 - `GET /`：案例页（默认入口）
 - `GET /cases`：兼容路由，返回同一页面
+- `GET /cases/:id`：案例详情直达路由（页面内自动弹出对应案例详情）
 - `GET /insights`：总结经验页
 - `GET /api/cases`：返回 JSON 数据

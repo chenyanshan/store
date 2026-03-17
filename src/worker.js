@@ -23,7 +23,7 @@ const appHtml = `<!doctype html>
     .chip.active { border-color:var(--brand); color:var(--brand); background:#eff6ff; }
     .search { border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; font-size:14px; width:100%; }
     .list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); display:flex; flex-direction:column; min-height:420px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); display:flex; flex-direction:column; min-height:420px; cursor:pointer; }
     .card-head { color:#fff; padding:14px 16px; min-height:128px; display:flex; flex-direction:column; justify-content:space-between; }
     .card-head.success { background:var(--success); } .card-head.warning { background:var(--warning); } .card-head.failure { background:var(--failure); }
     .badge { display:inline-block; font-size:12px; font-weight:700; padding:4px 10px; background:rgba(255,255,255,.24); border-radius:999px; }
@@ -148,7 +148,7 @@ const appHtml = `<!doctype html>
       return '<section class="detail-block"><h4>' + esc(title) + '</h4><p class="detail-text">' + esc(content) + '</p></section>';
     }
 
-    function openDetail(caseId) {
+    function openDetail(caseId, push) {
       var item = state.cases.find(function(x){ return String(x.id) === String(caseId); });
       if (!item) return;
       var points = (item.keyPoints || []).length ? '<section class="detail-block"><h4>关键点</h4><p class="detail-text">' + esc((item.keyPoints || []).join('、')) + '</p></section>' : '';
@@ -166,12 +166,18 @@ const appHtml = `<!doctype html>
       modalEl.style.display = 'flex';
       modalEl.setAttribute('aria-hidden', 'false');
       document.body.style.overflow = 'hidden';
+      if (push) {
+        history.pushState({}, '', '/cases/' + item.id);
+      }
     }
 
-    function closeDetail() {
+    function closeDetail(popOnly) {
       modalEl.style.display = 'none';
       modalEl.setAttribute('aria-hidden', 'true');
       document.body.style.overflow = '';
+      if (!popOnly && location.pathname.indexOf('/cases/') === 0) {
+        history.pushState({}, '', '/');
+      }
     }
 
     function renderCases() {
@@ -215,15 +221,43 @@ const appHtml = `<!doctype html>
     searchEl.addEventListener('input', function(e){ state.search = e.target.value; renderCases(); });
     document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(true); }); });
     listEl.addEventListener('click', function(e){
-      var target = e.target.closest('[data-case-id]');
-      if (!target) return;
-      openDetail(target.dataset.caseId);
+      var el = e.target;
+      if (!(el instanceof Element)) return;
+      var card = el.closest('.card');
+      if (!card) return;
+      var id = card.getAttribute('data-case-id');
+      if (!id) return;
+      openDetail(id, true);
     });
     modalEl.addEventListener('click', function(e){ if (e.target === modalEl) closeDetail(); });
-    document.getElementById('close-modal').addEventListener('click', closeDetail);
+    document.getElementById('close-modal').addEventListener('click', function(){ closeDetail(); });
     document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDetail(); });
+    window.addEventListener('popstate', function(){
+      if (location.pathname.indexOf('/insights') === 0) {
+        state.view = 'insights';
+        syncTabs();
+        closeDetail(true);
+        return;
+      }
+      state.view = 'cases';
+      syncTabs();
+      if (location.pathname.indexOf('/cases/') === 0) {
+        var detailId = location.pathname.split('/').pop();
+        openDetail(detailId, false);
+      } else {
+        closeDetail(true);
+      }
+    });
 
-    fetch('/api/cases').then(function(r){ return r.json(); }).then(function(data){ state.cases = data; if (location.pathname.indexOf('insights') >= 0) state.view = 'insights'; render(); });
+    fetch('/api/cases').then(function(r){ return r.json(); }).then(function(data){
+      state.cases = data;
+      if (location.pathname.indexOf('insights') >= 0) state.view = 'insights';
+      render();
+      if (location.pathname.indexOf('/cases/') === 0) {
+        var detailId = location.pathname.split('/').pop();
+        openDetail(detailId, false);
+      }
+    });
   </script>
 </body>
 </html>`;
@@ -234,7 +268,7 @@ export default {
     if (url.pathname === '/api/cases') {
       return Response.json(cases, { headers: { 'Cache-Control': 'public, max-age=3600' } });
     }
-    if (['/', '/cases', '/insights'].includes(url.pathname)) {
+    if (['/', '/cases', '/insights'].includes(url.pathname) || url.pathname.startsWith('/cases/')) {
       return new Response(appHtml, { headers: { 'content-type': 'text/html; charset=UTF-8', 'Cache-Control': 'public, max-age=600' } });
     }
     return new Response('Not Found', { status: 404 });
