@@ -23,24 +23,34 @@ const appHtml = `<!doctype html>
     .chip.active { border-color:var(--brand); color:var(--brand); background:#eff6ff; }
     .search { border:1px solid #d1d5db; border-radius:10px; padding:10px 12px; font-size:14px; width:100%; }
     .list { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); }
-    .card-head { color:#fff; padding:14px 16px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden; box-shadow:0 3px 12px rgba(0,0,0,.06); display:flex; flex-direction:column; min-height:420px; }
+    .card-head { color:#fff; padding:14px 16px; min-height:128px; display:flex; flex-direction:column; justify-content:space-between; }
     .card-head.success { background:var(--success); } .card-head.warning { background:var(--warning); } .card-head.failure { background:var(--failure); }
     .badge { display:inline-block; font-size:12px; font-weight:700; padding:4px 10px; background:rgba(255,255,255,.24); border-radius:999px; }
-    .title { margin:10px 0 0; font-size:28px; line-height:1.25; font-weight:800; }
-    .card-body { padding:14px 16px 16px; display:grid; gap:10px; }
+    .title { margin:10px 0 0; font-size:28px; line-height:1.25; font-weight:800; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+    .card-body { padding:14px 16px 16px; display:flex; flex-direction:column; gap:10px; flex:1; }
     .meta { color:#374151; line-height:1.8; }
-    .muted { color:var(--muted); }
-    .tags { display:flex; flex-wrap:wrap; gap:6px; }
+    .muted { color:var(--muted); display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; min-height:66px; }
+    .tags { display:flex; flex-wrap:wrap; gap:6px; min-height:56px; align-content:flex-start; }
     .tag { background:#f3f4f6; color:#4b5563; border-radius:999px; padding:4px 10px; font-size:12px; }
+    .detail-btn { border:0; border-radius:10px; background:#eaf1ff; color:#1d4ed8; font-weight:700; padding:10px 12px; cursor:pointer; margin-top:auto; }
     .summary-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
     .stat,.panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px; margin-bottom:12px; }
     .stat .v { font-size:26px; font-weight:800; margin-top:8px; }
     .panel h3 { margin:0 0 10px; }
     .panel ul { margin:0; padding-left:18px; line-height:1.7; color:#374151; }
     .empty { text-align:center; color:#6b7280; padding:40px 12px; }
+    .modal-backdrop { position:fixed; inset:0; background:rgba(15,23,42,.52); display:none; align-items:center; justify-content:center; padding:16px; z-index:100; }
+    .modal { width:min(860px,100%); max-height:88vh; overflow:auto; background:#fff; border-radius:16px; border:1px solid var(--line); }
+    .modal-head { position:sticky; top:0; background:#fff; z-index:1; display:flex; justify-content:space-between; align-items:flex-start; gap:12px; padding:16px; border-bottom:1px solid var(--line); }
+    .modal-title { margin:0; font-size:22px; }
+    .close-btn { border:0; background:#eef2ff; color:#1d4ed8; border-radius:10px; padding:8px 12px; cursor:pointer; font-weight:700; }
+    .modal-body { padding:16px; display:grid; gap:12px; }
+    .detail-block { background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px; }
+    .detail-block h4 { margin:0 0 8px; font-size:15px; }
+    .detail-text { margin:0; color:#334155; line-height:1.75; white-space:pre-wrap; }
     @media (max-width:980px){ .list,.summary-grid{ grid-template-columns:repeat(2,minmax(0,1fr)); } }
-    @media (max-width:680px){ .container{ padding:14px 10px 26px; } .header h1{ font-size:22px; } .list,.summary-grid{ grid-template-columns:1fr; } .title{ font-size:22px; } }
+    @media (max-width:680px){ .container{ padding:14px 10px 26px; } .header h1{ font-size:22px; } .list,.summary-grid{ grid-template-columns:1fr; } .title{ font-size:22px; } .modal-title{ font-size:18px; } }
   </style>
 </head>
 <body>
@@ -53,6 +63,18 @@ const appHtml = `<!doctype html>
     </section>
     <section id="insights-view" style="display:none;"></section>
   </div>
+  <div id="detail-modal" class="modal-backdrop" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-head">
+        <div>
+          <h3 id="modal-title" class="modal-title"></h3>
+          <div id="modal-meta" class="meta"></div>
+        </div>
+        <button id="close-modal" class="close-btn" type="button">关闭</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
+    </div>
+  </div>
   <script>
     var state = { cases: [], category: '全部', result: '全部', search: '', view: 'cases' };
     var listEl = document.getElementById('list');
@@ -62,6 +84,14 @@ const appHtml = `<!doctype html>
     var searchEl = document.getElementById('search');
     var casesView = document.getElementById('cases-view');
     var insightsView = document.getElementById('insights-view');
+    var modalEl = document.getElementById('detail-modal');
+    var modalTitleEl = document.getElementById('modal-title');
+    var modalMetaEl = document.getElementById('modal-meta');
+    var modalBodyEl = document.getElementById('modal-body');
+
+    function esc(str) {
+      return String(str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
 
     function topItems(items, key, size) {
       var m = new Map();
@@ -97,6 +127,8 @@ const appHtml = `<!doctype html>
         + '<div class="panel"><h3>高频行业分类（TOP10）</h3><ul>' + li(topCategories, function(v){ return '：' + v + ' 条'; }) + '</ul></div>'
         + '<div class="panel"><h3>常见风险信号（建议重点排查）</h3><ul>' + li(riskPoints, function(v){ return '（' + v + ' 次）'; }) + '</ul></div>'
         + '<div class="panel"><h3>成功案例中的正向信号</h3><ul>' + li(goodSignals, function(v){ return '（' + v + ' 次）'; }) + '</ul></div>'
+        + '<div class="panel"><h3>失败共性总结（为什么会失败）</h3><ul>' + li(riskPoints, function(v){ return '（' + v + ' 次）'; }) + '</ul><p class="detail-text">多数失败并不是单点问题，而是“人流判断失真 + 合同条款被动 + 预算结构失衡 + 运营准备不足”叠加导致。</p></div>'
+        + '<div class="panel"><h3>怎么做才更稳（避免失败）</h3><ul><li>先做小样本验证：连续多时段统计人流、客单、转化，满足阈值再签约。</li><li>合同先行：把独家经营、租金递增、违约责任写成可执行条款，避免口头承诺。</li><li>预算分层：保留至少3-6个月运营现金流，避免把资金都压在押金/装修/囤货。</li><li>先跑通最小模型：先做高频刚需SKU，稳定后再扩品类和增项目。</li></ul></div>'
         + '<div class="panel"><h3>我的建议（加分项）</h3><ul><li>优先验证“人流 × 转化率 × 客单价”三要素，再决定是否签约。</li><li>对“独家经营、租金递增、违约责任”等核心条款做合同锁定。</li><li>将每个案例沉淀为“可复制检查清单”，开店前逐条核对。</li></ul></div>';
     }
 
@@ -111,13 +143,44 @@ const appHtml = `<!doctype html>
       });
     }
 
+    function renderDetailBlock(title, content) {
+      if (!content) return '';
+      return '<section class="detail-block"><h4>' + esc(title) + '</h4><p class="detail-text">' + esc(content) + '</p></section>';
+    }
+
+    function openDetail(caseId) {
+      var item = state.cases.find(function(x){ return String(x.id) === String(caseId); });
+      if (!item) return;
+      var points = (item.keyPoints || []).length ? '<section class="detail-block"><h4>关键点</h4><p class="detail-text">' + esc((item.keyPoints || []).join('、')) + '</p></section>' : '';
+      modalTitleEl.textContent = item.title || '案例详情';
+      modalMetaEl.innerHTML = '<b>结论：</b>' + esc(item.resultText || '未知') + ' &nbsp; <b>品类：</b>' + esc(item.category || '未知') + ' &nbsp; <b>地点：</b>' + esc(item.location || '未知') + ' &nbsp; <b>投资：</b>' + esc(item.investment || '未知');
+      modalBodyEl.innerHTML = [
+        renderDetailBlock('案例摘要', item.summary),
+        renderDetailBlock('背景', item.background),
+        renderDetailBlock('核心问题', item.problem),
+        renderDetailBlock('过程分析', item.process),
+        renderDetailBlock('结果详情', item.resultDetail),
+        renderDetailBlock('复盘建议', item.reflection),
+        points
+      ].join('');
+      modalEl.style.display = 'flex';
+      modalEl.setAttribute('aria-hidden', 'false');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeDetail() {
+      modalEl.style.display = 'none';
+      modalEl.setAttribute('aria-hidden', 'true');
+      document.body.style.overflow = '';
+    }
+
     function renderCases() {
       var list = filteredCases();
       listEl.innerHTML = list.map(function(item){
-        var tags = (item.tags || []).slice(0,5).map(function(tag){ return '<span class="tag">' + tag + '</span>'; }).join('');
-        return '<article class="card">'
-          + '<div class="card-head ' + item.result + '"><span class="badge">' + item.resultText + '</span><h2 class="title">' + item.title + '</h2></div>'
-          + '<div class="card-body"><div class="meta"><b>品类：</b>' + (item.category || '未知') + ' &nbsp; <b>地点：</b>' + (item.location || '未知') + ' &nbsp; <b>投资：</b>' + (item.investment || '未知') + '</div><div class="muted">' + (item.summary || '暂无摘要') + '</div><div class="tags">' + tags + '</div></div>'
+        var tags = (item.tags || []).slice(0,5).map(function(tag){ return '<span class="tag">' + esc(tag) + '</span>'; }).join('');
+        return '<article class="card" data-case-id="' + esc(item.id) + '">'
+          + '<div class="card-head ' + item.result + '"><span class="badge">' + esc(item.resultText) + '</span><h2 class="title">' + esc(item.title) + '</h2></div>'
+          + '<div class="card-body"><div class="meta"><b>品类：</b>' + esc(item.category || '未知') + ' &nbsp; <b>地点：</b>' + esc(item.location || '未知') + ' &nbsp; <b>投资：</b>' + esc(item.investment || '未知') + '</div><div class="muted">' + esc(item.summary || '暂无摘要') + '</div><div class="tags">' + tags + '</div><button type="button" class="detail-btn" data-case-id="' + esc(item.id) + '">查看详情</button></div>'
           + '</article>';
       }).join('');
       emptyEl.style.display = list.length ? 'none' : 'block';
@@ -128,11 +191,13 @@ const appHtml = `<!doctype html>
       el.querySelectorAll('.chip').forEach(function(btn){ btn.addEventListener('click', function(){ onClick(btn.dataset.value); }); });
     }
 
-    function syncTabs() {
+    function syncTabs(push) {
       document.querySelectorAll('.tab').forEach(function(btn){ btn.classList.toggle('active', btn.dataset.view === state.view); });
       casesView.style.display = state.view === 'cases' ? 'block' : 'none';
       insightsView.style.display = state.view === 'insights' ? 'block' : 'none';
-      history.replaceState({}, '', state.view === 'cases' ? '/cases' : '/insights');
+      if (push) {
+        history.pushState({}, '', state.view === 'cases' ? '/' : '/insights');
+      }
     }
 
     function render() {
@@ -148,7 +213,16 @@ const appHtml = `<!doctype html>
     }
 
     searchEl.addEventListener('input', function(e){ state.search = e.target.value; renderCases(); });
-    document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(); }); });
+    document.querySelectorAll('.tab').forEach(function(btn){ btn.addEventListener('click', function(){ state.view = btn.dataset.view; syncTabs(true); }); });
+    listEl.addEventListener('click', function(e){
+      var target = e.target.closest('[data-case-id]');
+      if (!target) return;
+      openDetail(target.dataset.caseId);
+    });
+    modalEl.addEventListener('click', function(e){ if (e.target === modalEl) closeDetail(); });
+    document.getElementById('close-modal').addEventListener('click', closeDetail);
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeDetail(); });
+
     fetch('/api/cases').then(function(r){ return r.json(); }).then(function(data){ state.cases = data; if (location.pathname.indexOf('insights') >= 0) state.view = 'insights'; render(); });
   </script>
 </body>
