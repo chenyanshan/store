@@ -15,6 +15,16 @@ const DETAIL_SECTIONS = [
   { label: "复盘建议", key: "reflection" }
 ];
 
+const STUDY_STORAGE_KEYS = {
+  learningId: "study_learning_id",
+  secret: "study_learning_secret"
+};
+
+const STUDY_MODES = {
+  all: "全部案例",
+  favorites: "仅看收藏"
+};
+
 const SUMMARY_DATA = {
   coreQuote: "开实体店的本质是一场「基于真实客流数据的成本收益算账游戏」。",
   formula:
@@ -152,7 +162,8 @@ const state = {
   category: "all",
   result: "all",
   searchQuery: "",
-  activeCaseId: ""
+  activeCaseId: "",
+  study: createStudyState()
 };
 
 bootstrap();
@@ -168,6 +179,7 @@ async function bootstrap() {
 
   syncFiltersFromUrl();
   await loadCases();
+  hydrateStudyIdentityFromLocal();
   clampFilters();
   render();
 }
@@ -181,6 +193,27 @@ function onRouteChange() {
 function onGlobalKeyDown(event) {
   if (event.key === "Escape" && state.activeCaseId) {
     closeDetailModal();
+    return;
+  }
+
+  const route = getRoute();
+  if (route.type !== "study" || !state.study.active) {
+    return;
+  }
+
+  const targetTag = event.target && event.target.tagName ? String(event.target.tagName).toLowerCase() : "";
+  if (targetTag === "input" || targetTag === "textarea" || targetTag === "select") {
+    return;
+  }
+
+  if (event.key === "ArrowRight") {
+    event.preventDefault();
+    moveStudyStep(1);
+  }
+
+  if (event.key === "ArrowLeft") {
+    event.preventDefault();
+    moveStudyStep(-1);
   }
 }
 
@@ -338,6 +371,10 @@ function getRoute() {
     return { type: "summary" };
   }
 
+  if (path === "/study") {
+    return { type: "study" };
+  }
+
   return { type: "not-found" };
 }
 
@@ -459,6 +496,11 @@ function render() {
     return;
   }
 
+  if (route.type === "study") {
+    renderStudyPage();
+    return;
+  }
+
   if (route.type === "not-found") {
     document.title = "页面不存在 | 零售创业案例数据库";
     setModalOpen(false);
@@ -473,11 +515,13 @@ function renderMainNav(activeTab) {
   const listHref = "/" + buildFilterSearch({ includeDetail: false });
   const listClass = activeTab === "list" ? "nav-link active" : "nav-link";
   const summaryClass = activeTab === "summary" ? "nav-link active" : "nav-link";
+  const studyClass = activeTab === "study" ? "nav-link active" : "nav-link";
 
   return `
     <nav class="main-nav panel">
       <a href="${listHref}" class="${listClass}" data-link>案例列表</a>
       <a href="/summary" class="${summaryClass}" data-link>知识总结</a>
+      <a href="/study" class="${studyClass}" data-link>学习模式</a>
     </nav>
   `;
 }
@@ -802,6 +846,602 @@ function renderDetailSection(label, value) {
       <p>${escapeHtml(value).replace(/\n/g, "<br>")}</p>
     </section>
   `;
+}
+
+function renderStudyPage() {
+  document.title = "学习模式 | 零售创业案例数据库";
+  setModalOpen(false);
+  maybeAutoResumeStudy();
+
+  const study = state.study;
+
+  if (!study.active) {
+    app.innerHTML = `
+      <main class="shell study-shell">
+        ${renderMainNav("study")}
+
+        <header class="hero">
+          <p class="eyebrow">Study Mode</p>
+          <h1>学习模式</h1>
+          <p class="lead">使用学习 ID 与恢复码，在不同设备上恢复你的学习进度与收藏。</p>
+        </header>
+
+        <section class="panel study-auth-panel">
+          <h2>打开学习档案</h2>
+          <form id="studyOpenForm" class="study-auth-form">
+            <label for="studyLearningId">学习 ID</label>
+            <input
+              id="studyLearningId"
+              type="text"
+              value="${escapeHtml(study.learningIdInput)}"
+              placeholder="例如 learn-a1b2c3d4"
+              autocomplete="off"
+            >
+
+            <label for="studySecret">恢复码/口令</label>
+            <input
+              id="studySecret"
+              type="password"
+              value="${escapeHtml(study.secretInput)}"
+              placeholder="4 位数字"
+              autocomplete="off"
+              inputmode="numeric"
+              maxlength="4"
+            >
+
+            <div class="study-auth-actions">
+              <button type="submit" class="study-primary-button" ${study.loading ? "disabled" : ""}>
+                ${study.loading ? "连接中..." : "创建或继续学习"}
+              </button>
+            </div>
+          </form>
+          ${renderStudyStatus()}
+        </section>
+      </main>
+    `;
+    bindStudyEvents();
+    return;
+  }
+
+  normalizeStudyPosition();
+  const caseIds = getStudyCaseIds(study.mode);
+  const currentRecord = getStudyCurrentRecord();
+  const total = caseIds.length;
+  const position = total === 0 ? 0 : study.currentIndex + 1;
+  const isFavorite = currentRecord ? study.favorites.has(currentRecord.id) : false;
+  const canPrev = position > 1;
+  const canNext = position < total;
+  const modeLabel = STUDY_MODES[study.mode] || STUDY_MODES.all;
+
+  app.innerHTML = `
+    <main class="shell study-shell">
+      ${renderMainNav("study")}
+
+      <header class="hero">
+        <p class="eyebrow">Study Mode</p>
+        <h1>学习模式</h1>
+        <p class="lead">持续学习、收藏重点案例，并跨设备同步进度。</p>
+      </header>
+
+      <section class="panel study-profile">
+        <div>
+          <p class="study-label">学习 ID</p>
+          <strong>${escapeHtml(study.learningId)}</strong>
+        </div>
+        <div>
+          <p class="study-label">当前模式</p>
+          <strong>${escapeHtml(modeLabel)}</strong>
+        </div>
+        <div>
+          <p class="study-label">收藏数量</p>
+          <strong>${study.favorites.size}</strong>
+        </div>
+        <button type="button" class="study-secondary-button" id="studyLogoutButton">退出当前设备</button>
+      </section>
+
+      <section class="panel study-toolbar">
+        <div class="study-mode-switch">
+          <button type="button" class="chip ${study.mode === "all" ? "active" : ""}" data-study-mode="all">全部案例</button>
+          <button type="button" class="chip ${study.mode === "favorites" ? "active" : ""}" data-study-mode="favorites">仅看收藏</button>
+        </div>
+        <p class="hint">当前进度：第 ${position} 条 / 共 ${total} 条</p>
+        ${renderStudyStatus()}
+      </section>
+
+      ${
+        currentRecord
+          ? `
+            <article class="panel study-case ${currentRecord.result}">
+              <header class="study-case-header">
+                <span class="result-badge ${currentRecord.result}">${escapeHtml(currentRecord.resultText)}</span>
+                <h2>${escapeHtml(currentRecord.title)}</h2>
+                <p class="meta-line">
+                  <span>${escapeHtml(currentRecord.category)}</span>
+                  <span>${escapeHtml(currentRecord.location || "地区待补充")}</span>
+                  <span>ID: ${escapeHtml(currentRecord.id)}</span>
+                </p>
+              </header>
+
+              <section class="detail-section">
+                <h3>案例摘要</h3>
+                <p>${escapeHtml(currentRecord.summary || "暂无摘要")}</p>
+              </section>
+
+              <section class="detail-grid">
+                ${renderDetailMeta("投资金额", currentRecord.investment)}
+                ${renderDetailMeta("月盈利", currentRecord.monthlyProfit)}
+                ${renderDetailMeta("月亏损", currentRecord.monthlyLoss)}
+                ${renderDetailMeta("经营时长", currentRecord.businessTime)}
+              </section>
+
+              ${
+                currentRecord.keyPoints.length > 0
+                  ? `
+                    <section class="detail-section">
+                      <h3>关键要点</h3>
+                      <ul class="points">
+                        ${currentRecord.keyPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+                      </ul>
+                    </section>
+                  `
+                  : ""
+              }
+
+              ${DETAIL_SECTIONS.map((item) => renderDetailSection(item.label, currentRecord[item.key])).join("")}
+
+              <section class="study-actions">
+                <button type="button" class="study-secondary-button" data-study-nav="-1" ${canPrev ? "" : "disabled"}>
+                  上一条
+                </button>
+                <button type="button" class="study-primary-button" id="studyFavoriteToggle">
+                  ${isFavorite ? "取消收藏" : "收藏案例"}
+                </button>
+                <button type="button" class="study-secondary-button" data-study-nav="1" ${canNext ? "" : "disabled"}>
+                  下一条
+                </button>
+              </section>
+            </article>
+          `
+          : `
+            <section class="panel empty-panel">
+              <h2>当前模式暂无可学习案例</h2>
+              <p>请切换到“全部案例”继续学习，或先收藏一些案例。</p>
+            </section>
+          `
+      }
+    </main>
+  `;
+
+  bindStudyEvents();
+}
+
+function renderStudyStatus() {
+  const study = state.study;
+  if (study.error) {
+    return `<p class="study-status error">${escapeHtml(study.error)}</p>`;
+  }
+
+  if (study.syncing) {
+    return `<p class="study-status info">正在同步学习进度...</p>`;
+  }
+
+  if (study.info) {
+    return `<p class="study-status info">${escapeHtml(study.info)}</p>`;
+  }
+
+  return "";
+}
+
+function bindStudyEvents() {
+  const openForm = document.querySelector("#studyOpenForm");
+  if (openForm) {
+    openForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void openStudySessionFromInputs();
+    });
+  }
+
+  const learningIdInput = document.querySelector("#studyLearningId");
+  if (learningIdInput) {
+    learningIdInput.addEventListener("input", (event) => {
+      state.study.learningIdInput = String(event.target.value || "");
+    });
+  }
+
+  const secretInput = document.querySelector("#studySecret");
+  if (secretInput) {
+    secretInput.addEventListener("input", (event) => {
+      state.study.secretInput = String(event.target.value || "");
+    });
+  }
+
+  const logoutButton = document.querySelector("#studyLogoutButton");
+  if (logoutButton) {
+    logoutButton.addEventListener("click", () => {
+      logoutStudyFromCurrentDevice();
+    });
+  }
+
+  const modeButtons = document.querySelectorAll("[data-study-mode]");
+  for (const button of modeButtons) {
+    button.addEventListener("click", () => {
+      const mode = button.dataset.studyMode || "all";
+      setStudyMode(mode);
+    });
+  }
+
+  const navButtons = document.querySelectorAll("[data-study-nav]");
+  for (const button of navButtons) {
+    button.addEventListener("click", () => {
+      const step = Number(button.dataset.studyNav || "0");
+      moveStudyStep(step);
+    });
+  }
+
+  const favoriteButton = document.querySelector("#studyFavoriteToggle");
+  if (favoriteButton) {
+    favoriteButton.addEventListener("click", () => {
+      void toggleStudyFavorite();
+    });
+  }
+}
+
+async function openStudySessionFromInputs() {
+  const learningId = state.study.learningIdInput.trim().toLowerCase();
+  const secret = state.study.secretInput.trim();
+  await openStudySession({
+    learningId,
+    secret,
+    silent: false
+  });
+}
+
+async function openStudySession(options) {
+  const learningId = String(options.learningId || "")
+    .trim()
+    .toLowerCase();
+  const secret = String(options.secret || "").trim();
+  const silent = Boolean(options.silent);
+
+  if (!learningId || !secret) {
+    state.study.error = "请输入学习 ID 和恢复码";
+    state.study.info = "";
+    render();
+    return;
+  }
+
+  if (!/^\d{4}$/.test(secret)) {
+    state.study.error = "恢复码必须是 4 位数字";
+    state.study.info = "";
+    render();
+    return;
+  }
+
+  state.study.loading = true;
+  state.study.error = "";
+  state.study.info = silent ? "" : "正在连接学习档案...";
+  render();
+
+  try {
+    const data = await requestStudyApi("/api/study/open", {
+      method: "POST",
+      body: {
+        learning_id: learningId,
+        secret
+      }
+    });
+
+    applyStudyStateFromServer(data, learningId, secret);
+    persistStudyIdentityToLocal(learningId, secret);
+    state.study.info = "学习档案已连接";
+  } catch (error) {
+    state.study.active = false;
+    state.study.error = silent ? "自动恢复失败，请重新输入学习 ID 和恢复码。" : getErrorMessage(error);
+    state.study.info = "";
+  } finally {
+    state.study.loading = false;
+    state.study.autoResumeTried = true;
+    render();
+  }
+}
+
+function applyStudyStateFromServer(data, learningId, secret) {
+  state.study.active = true;
+  state.study.learningId = learningId;
+  state.study.secret = secret;
+  state.study.learningIdInput = learningId;
+  state.study.secretInput = secret;
+  state.study.favorites = new Set(
+    Array.isArray(data.favorites) ? data.favorites.map((caseId) => String(caseId)) : []
+  );
+  state.study.mode = data.mode === "favorites" ? "favorites" : "all";
+  state.study.currentCaseId = data.current_case_id ? String(data.current_case_id) : "";
+  state.study.currentIndex = toPositiveInt(data.current_index);
+  state.study.error = "";
+  state.study.autoResumeTried = true;
+  normalizeStudyPosition();
+}
+
+function maybeAutoResumeStudy() {
+  if (state.study.active || state.study.loading || state.study.autoResumeTried) {
+    return;
+  }
+
+  state.study.autoResumeTried = true;
+  if (!state.study.learningIdInput || !state.study.secretInput) {
+    return;
+  }
+
+  void openStudySession({
+    learningId: state.study.learningIdInput,
+    secret: state.study.secretInput,
+    silent: true
+  });
+}
+
+function getStudyCaseIds(mode) {
+  if (mode === "favorites") {
+    const ids = [];
+    for (const item of state.cases) {
+      if (state.study.favorites.has(item.id)) {
+        ids.push(item.id);
+      }
+    }
+    return ids;
+  }
+
+  return state.cases.map((item) => item.id);
+}
+
+function normalizeStudyPosition() {
+  const caseIds = getStudyCaseIds(state.study.mode);
+  if (caseIds.length === 0) {
+    state.study.currentCaseId = "";
+    state.study.currentIndex = 0;
+    return;
+  }
+
+  if (state.study.currentCaseId) {
+    const hitIndex = caseIds.indexOf(state.study.currentCaseId);
+    if (hitIndex >= 0) {
+      state.study.currentIndex = hitIndex;
+      return;
+    }
+  }
+
+  const nextIndex = clampInt(state.study.currentIndex, 0, caseIds.length - 1);
+  state.study.currentIndex = nextIndex;
+  state.study.currentCaseId = caseIds[nextIndex];
+}
+
+function getStudyCurrentRecord() {
+  normalizeStudyPosition();
+  if (!state.study.currentCaseId) {
+    return null;
+  }
+  return state.cases.find((item) => item.id === state.study.currentCaseId) || null;
+}
+
+function moveStudyStep(step) {
+  if (!state.study.active) {
+    return;
+  }
+
+  const caseIds = getStudyCaseIds(state.study.mode);
+  if (caseIds.length === 0) {
+    return;
+  }
+
+  const nextIndex = clampInt(state.study.currentIndex + step, 0, caseIds.length - 1);
+  if (nextIndex === state.study.currentIndex) {
+    return;
+  }
+
+  state.study.currentIndex = nextIndex;
+  state.study.currentCaseId = caseIds[nextIndex];
+  state.study.error = "";
+  state.study.info = "";
+  render();
+  void syncStudyProgress({ quiet: true });
+}
+
+function setStudyMode(mode) {
+  if (!state.study.active) {
+    return;
+  }
+
+  if (mode !== "all" && mode !== "favorites") {
+    return;
+  }
+
+  if (state.study.mode === mode) {
+    return;
+  }
+
+  state.study.mode = mode;
+  normalizeStudyPosition();
+  render();
+  void syncStudyProgress({ quiet: true });
+}
+
+async function toggleStudyFavorite() {
+  if (!state.study.active) {
+    return;
+  }
+
+  const currentRecord = getStudyCurrentRecord();
+  if (!currentRecord) {
+    return;
+  }
+
+  state.study.error = "";
+  state.study.syncing = true;
+  render();
+
+  try {
+    const result = await requestStudyApi("/api/study/favorites/toggle", {
+      method: "POST",
+      body: {
+        learning_id: state.study.learningId,
+        secret: state.study.secret,
+        case_id: currentRecord.id
+      }
+    });
+
+    if (result.favorited) {
+      state.study.favorites.add(currentRecord.id);
+      state.study.info = "已加入收藏";
+    } else {
+      state.study.favorites.delete(currentRecord.id);
+      state.study.info = "已取消收藏";
+    }
+
+    normalizeStudyPosition();
+    await syncStudyProgress({ quiet: true });
+  } catch (error) {
+    state.study.error = getErrorMessage(error);
+  } finally {
+    state.study.syncing = false;
+    render();
+  }
+}
+
+async function syncStudyProgress(options = {}) {
+  if (!state.study.active) {
+    return;
+  }
+
+  const quiet = Boolean(options.quiet);
+  if (!quiet) {
+    state.study.syncing = true;
+    render();
+  }
+
+  try {
+    await requestStudyApi("/api/study/progress", {
+      method: "POST",
+      body: {
+        learning_id: state.study.learningId,
+        secret: state.study.secret,
+        current_case_id: state.study.currentCaseId,
+        current_index: state.study.currentIndex,
+        mode: state.study.mode
+      }
+    });
+  } catch (error) {
+    state.study.error = "学习进度同步失败：" + getErrorMessage(error);
+    render();
+  } finally {
+    if (!quiet) {
+      state.study.syncing = false;
+      render();
+    }
+  }
+}
+
+function logoutStudyFromCurrentDevice() {
+  clearStudyIdentityFromLocal();
+  state.study = createStudyState();
+  state.study.info = "已退出当前设备上的学习档案";
+  state.study.autoResumeTried = true;
+  render();
+}
+
+function hydrateStudyIdentityFromLocal() {
+  try {
+    const learningId = localStorage.getItem(STUDY_STORAGE_KEYS.learningId) || "";
+    const secret = localStorage.getItem(STUDY_STORAGE_KEYS.secret) || "";
+    if (!learningId || !secret) {
+      return;
+    }
+
+    state.study.learningIdInput = learningId;
+    state.study.secretInput = secret;
+  } catch {
+    // Ignore browser storage failures and continue without local resume.
+  }
+}
+
+function persistStudyIdentityToLocal(learningId, secret) {
+  try {
+    localStorage.setItem(STUDY_STORAGE_KEYS.learningId, learningId);
+    localStorage.setItem(STUDY_STORAGE_KEYS.secret, secret);
+  } catch {
+    // Ignore local persistence failures and keep the current session in memory.
+  }
+}
+
+function clearStudyIdentityFromLocal() {
+  try {
+    localStorage.removeItem(STUDY_STORAGE_KEYS.learningId);
+    localStorage.removeItem(STUDY_STORAGE_KEYS.secret);
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
+async function requestStudyApi(path, options = {}) {
+  const method = options.method || "GET";
+  const headers = {
+    accept: "application/json",
+    ...(options.headers || {})
+  };
+  const requestInit = { method, headers };
+
+  if (options.body !== undefined) {
+    headers["content-type"] = "application/json";
+    requestInit.body = JSON.stringify(options.body);
+  }
+
+  const response = await fetch(path, requestInit);
+  let payload = null;
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || !payload || payload.ok !== true) {
+    const message = payload?.error?.message || "请求失败，状态码: " + response.status;
+    throw new Error(message);
+  }
+
+  return payload.data;
+}
+
+function getErrorMessage(error) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function clampInt(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function toPositiveInt(value) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    return 0;
+  }
+  return parsed;
+}
+
+function createStudyState() {
+  return {
+    learningId: "",
+    secret: "",
+    learningIdInput: "",
+    secretInput: "",
+    active: false,
+    mode: "all",
+    favorites: new Set(),
+    currentCaseId: "",
+    currentIndex: 0,
+    autoResumeTried: false,
+    loading: false,
+    syncing: false,
+    error: "",
+    info: ""
+  };
 }
 
 function renderSummaryPage() {

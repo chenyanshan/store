@@ -1,11 +1,18 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "retail-case-database",
-  "main": "worker.js",
-  "compatibility_date": "2026-03-18",
-  "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
-  }
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "retail-case-database",
+	"main": "worker.js",
+	"compatibility_date": "2026-03-18",
+	"d1_databases": [
+		{
+			"binding": "retail_case_database",
+			"database_name": "retail-case-database",
+			"database_id": "878e0669-3bb2-423a-ade7-ce6d7dc9fce3"
+		}
+	],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		"not_found_handling": "single-page-application"
+	}
 }
