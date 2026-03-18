@@ -293,7 +293,7 @@ a {
 
 .card {
   --card-line: #c9c0b2;
-  border: 1px solid var(--line);
+  border: 0;
   border-radius: 16px;
   background: #fffefb;
   padding: 0.95rem;
@@ -308,7 +308,7 @@ a {
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 4px;
+  width: 6px;
   background: var(--card-line);
 }
 
@@ -319,7 +319,6 @@ a {
 
 .card.success {
   --card-line: #2a7c43;
-  border-color: #b8d6c2;
   background:
     radial-gradient(circle at 86% 8%, rgba(42, 124, 67, 0.22), transparent 34%),
     linear-gradient(165deg, #f4fcf7 0%, #fdfefc 58%, #fffefb 100%);
@@ -327,7 +326,6 @@ a {
 
 .card.failure {
   --card-line: #8f2e2e;
-  border-color: #ddb9bb;
   background:
     radial-gradient(circle at 86% 8%, rgba(143, 46, 46, 0.22), transparent 34%),
     linear-gradient(165deg, #fff6f5 0%, #fffdfd 58%, #fffefb 100%);
@@ -335,7 +333,6 @@ a {
 
 .card.warning {
   --card-line: #9a6715;
-  border-color: #dfcca7;
   background:
     radial-gradient(circle at 86% 8%, rgba(154, 103, 21, 0.22), transparent 34%),
     linear-gradient(165deg, #fff9ef 0%, #fffefb 58%, #fffefb 100%);
@@ -779,6 +776,33 @@ a {
 @media (min-width: 1080px) {
   .cards {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  /* Desktop view can show many cards at once.
+     Tone down large gradients and keep only subtle status cues. */
+  .card {
+    transition: box-shadow 140ms ease;
+  }
+
+  .card:hover {
+    transform: none;
+    box-shadow: 0 12px 26px rgba(43, 41, 28, 0.11);
+  }
+
+  .card::before {
+    width: 5px;
+  }
+
+  .card.success {
+    background: linear-gradient(180deg, rgba(42, 124, 67, 0.07) 0%, #fffefb 24%, #fffefb 100%);
+  }
+
+  .card.failure {
+    background: linear-gradient(180deg, rgba(143, 46, 46, 0.07) 0%, #fffefb 24%, #fffefb 100%);
+  }
+
+  .card.warning {
+    background: linear-gradient(180deg, rgba(154, 103, 21, 0.08) 0%, #fffefb 24%, #fffefb 100%);
   }
 }
 
