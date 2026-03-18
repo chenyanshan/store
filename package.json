@@ -1,0 +1,14 @@
+{
+  "name": "retail-case-database",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Case database website for Cloudflare Workers",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "npm run build && wrangler dev",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "^4.9.1"
+  }
+}
