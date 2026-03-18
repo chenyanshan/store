@@ -38,7 +38,7 @@ npm run deploy
 wrangler d1 create retail-case-database
 ```
 
-2. 将返回的 `database_id` 填入 `wrangler.jsonc` 的 `d1_databases[0].database_id`。
+2. 将返回的 `database_id` 填入 `wrangler.jsonc` 的 `d1_databases[0].database_id`，并确认 `d1_databases[0].binding` 为 `DB`。
 
 3. 本地应用迁移：
 

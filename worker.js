@@ -90,12 +90,17 @@ async function handleStudyApi(request, env, url) {
 }
 
 function ensureDb(env) {
-  if (!env.DB) {
+  if (!getDb(env)) {
     throw new ApiError(500, "db_not_configured", "未配置 D1 数据库绑定 `DB`");
   }
 }
 
+function getDb(env) {
+  return env.DB || env.retail_case_database || null;
+}
+
 async function handleOpen(request, env) {
+  const db = getDb(env);
   const body = await readJsonBody(request);
   const learningId = normalizeLearningId(body.learning_id);
   const secret = normalizeSecret(body.secret);
@@ -104,7 +109,7 @@ async function handleOpen(request, env) {
 
   const profile = await getProfile(env, learningId);
   if (!profile) {
-    await env.DB.prepare(
+    await db.prepare(
       `
       INSERT INTO study_profiles (
         learning_id, secret_hash, current_case_id, current_index, mode,
@@ -118,7 +123,7 @@ async function handleOpen(request, env) {
   } else {
     ensureSecretMatched(profile.secret_hash, secretHash);
 
-    await env.DB.prepare(
+    await db.prepare(
       `
       UPDATE study_profiles
       SET last_seen_at = ?, updated_at = ?
@@ -133,6 +138,7 @@ async function handleOpen(request, env) {
 }
 
 async function handleState(request, env, url) {
+  const db = getDb(env);
   const learningId = normalizeLearningId(
     request.headers.get("x-learning-id") || url.searchParams.get("learning_id")
   );
@@ -144,7 +150,7 @@ async function handleState(request, env, url) {
   ensureSecretMatched(profile.secret_hash, secretHash);
 
   const now = isoNow();
-  await env.DB.prepare(
+  await db.prepare(
     `
     UPDATE study_profiles
     SET last_seen_at = ?
@@ -158,6 +164,7 @@ async function handleState(request, env, url) {
 }
 
 async function handleProgress(request, env) {
+  const db = getDb(env);
   const body = await readJsonBody(request);
   const learningId = normalizeLearningId(body.learning_id);
   const secret = normalizeSecret(body.secret);
@@ -171,7 +178,7 @@ async function handleProgress(request, env) {
   const sourceFilterSnapshot = normalizeFilterSnapshot(body.source_filter_snapshot);
   const now = isoNow();
 
-  await env.DB.prepare(
+  await db.prepare(
     `
     UPDATE study_profiles
     SET current_case_id = ?, current_index = ?, mode = ?, source_filter_snapshot = ?,
@@ -192,6 +199,7 @@ async function handleProgress(request, env) {
 }
 
 async function handleFavoriteToggle(request, env) {
+  const db = getDb(env);
   const body = await readJsonBody(request);
   const learningId = normalizeLearningId(body.learning_id);
   const secret = normalizeSecret(body.secret);
@@ -200,7 +208,7 @@ async function handleFavoriteToggle(request, env) {
   const profile = await mustGetProfile(env, learningId);
   ensureSecretMatched(profile.secret_hash, secretHash);
 
-  const exists = await env.DB.prepare(
+  const exists = await db.prepare(
     `
     SELECT 1 AS matched
     FROM study_favorites
@@ -215,7 +223,7 @@ async function handleFavoriteToggle(request, env) {
   const now = isoNow();
 
   if (exists) {
-    await env.DB.prepare(
+    await db.prepare(
       `
       DELETE FROM study_favorites
       WHERE learning_id = ? AND case_id = ?
@@ -225,7 +233,7 @@ async function handleFavoriteToggle(request, env) {
       .run();
   } else {
     favorited = true;
-    await env.DB.prepare(
+    await db.prepare(
       `
       INSERT INTO study_favorites (learning_id, case_id, created_at)
       VALUES (?, ?, ?)
@@ -235,7 +243,7 @@ async function handleFavoriteToggle(request, env) {
       .run();
   }
 
-  await env.DB.prepare(
+  await db.prepare(
     `
     UPDATE study_profiles
     SET updated_at = ?, last_seen_at = ?
@@ -245,7 +253,7 @@ async function handleFavoriteToggle(request, env) {
     .bind(now, now, learningId)
     .run();
 
-  const countRow = await env.DB.prepare(
+  const countRow = await db.prepare(
     `
     SELECT COUNT(*) AS count
     FROM study_favorites
@@ -264,8 +272,9 @@ async function handleFavoriteToggle(request, env) {
 }
 
 async function getStudyState(env, learningId) {
+  const db = getDb(env);
   const profile = await mustGetProfile(env, learningId);
-  const favoritesResult = await env.DB.prepare(
+  const favoritesResult = await db.prepare(
     `
     SELECT case_id
     FROM study_favorites
@@ -301,7 +310,8 @@ async function getStudyState(env, learningId) {
 }
 
 async function getProfile(env, learningId) {
-  return env.DB.prepare(
+  const db = getDb(env);
+  return db.prepare(
     `
     SELECT learning_id, secret_hash, current_case_id, current_index, mode,
            source_filter_snapshot, created_at, updated_at, last_seen_at

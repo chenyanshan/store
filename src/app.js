@@ -191,12 +191,19 @@ function onRouteChange() {
 }
 
 function onGlobalKeyDown(event) {
-  if (event.key === "Escape" && state.activeCaseId) {
-    closeDetailModal();
-    return;
+  const route = getRoute();
+  if (event.key === "Escape") {
+    if (route.type === "study" && state.study.activeDetailCaseId) {
+      closeStudyDetailModal();
+      return;
+    }
+
+    if (route.type === "list" && state.activeCaseId) {
+      closeDetailModal();
+      return;
+    }
   }
 
-  const route = getRoute();
   if (route.type !== "study" || !state.study.active) {
     return;
   }
@@ -520,8 +527,8 @@ function renderMainNav(activeTab) {
   return `
     <nav class="main-nav panel">
       <a href="${listHref}" class="${listClass}" data-link>案例列表</a>
-      <a href="/summary" class="${summaryClass}" data-link>知识总结</a>
       <a href="/study" class="${studyClass}" data-link>学习模式</a>
+      <a href="/summary" class="${summaryClass}" data-link>知识总结</a>
     </nav>
   `;
 }
@@ -684,6 +691,16 @@ function bindListEvents() {
     });
   }
 
+  const detailFavoriteButtons = document.querySelectorAll("[data-detail-toggle-favorite]");
+  for (const button of detailFavoriteButtons) {
+    button.addEventListener("click", () => {
+      const caseId = button.dataset.detailToggleFavorite || "";
+      if (caseId) {
+        void toggleStudyFavoriteByCaseId(caseId, { inlineDetail: true });
+      }
+    });
+  }
+
   const overlay = document.querySelector("[data-modal-overlay]");
   if (overlay) {
     overlay.addEventListener("click", (event) => {
@@ -766,6 +783,9 @@ function renderEmptyState() {
 }
 
 function renderDetailModal(record) {
+  const canFavorite = state.study.active;
+  const isFavorite = canFavorite && state.study.favorites.has(record.id);
+
   return `
     <div class="modal-overlay" data-modal-overlay role="presentation">
       <article class="modal-dialog panel ${record.result}" role="dialog" aria-modal="true" aria-label="案例详情">
@@ -819,6 +839,22 @@ function renderDetailModal(record) {
             `
             : ""
         }
+
+        ${
+          canFavorite
+            ? `
+              <section class="detail-modal-actions">
+                <button
+                  class="detail-button detail-favorite-button ${isFavorite ? "is-favorited" : ""}"
+                  type="button"
+                  data-detail-toggle-favorite="${escapeHtml(record.id)}"
+                >
+                  ${isFavorite ? "取消收藏" : "收藏案例"}
+                </button>
+              </section>
+            `
+            : ""
+        }
       </article>
     </div>
   `;
@@ -850,12 +886,12 @@ function renderDetailSection(label, value) {
 
 function renderStudyPage() {
   document.title = "学习模式 | 零售创业案例数据库";
-  setModalOpen(false);
   maybeAutoResumeStudy();
 
   const study = state.study;
 
   if (!study.active) {
+    setModalOpen(false);
     app.innerHTML = `
       <main class="shell study-shell">
         ${renderMainNav("study")}
@@ -903,15 +939,22 @@ function renderStudyPage() {
     return;
   }
 
-  normalizeStudyPosition();
-  const caseIds = getStudyCaseIds(study.mode);
+  normalizeStudyProgressPosition();
   const currentRecord = getStudyCurrentRecord();
-  const total = caseIds.length;
+  const total = state.cases.length;
   const position = total === 0 ? 0 : study.currentIndex + 1;
+  const favoriteRecords = getStudyFavoriteRecords();
   const isFavorite = currentRecord ? study.favorites.has(currentRecord.id) : false;
   const canPrev = position > 1;
   const canNext = position < total;
   const modeLabel = STUDY_MODES[study.mode] || STUDY_MODES.all;
+  const progressText =
+    study.mode === "favorites"
+      ? `当前收藏：共 ${favoriteRecords.length} 条`
+      : `当前进度：第 ${position} 条 / 共 ${total} 条`;
+  const studyDetailRecord = state.cases.find((item) => item.id === study.activeDetailCaseId) || null;
+
+  setModalOpen(Boolean(studyDetailRecord));
 
   app.innerHTML = `
     <main class="shell study-shell">
@@ -944,72 +987,17 @@ function renderStudyPage() {
           <button type="button" class="chip ${study.mode === "all" ? "active" : ""}" data-study-mode="all">全部案例</button>
           <button type="button" class="chip ${study.mode === "favorites" ? "active" : ""}" data-study-mode="favorites">仅看收藏</button>
         </div>
-        <p class="hint">当前进度：第 ${position} 条 / 共 ${total} 条</p>
+        <p class="hint">${progressText}</p>
         ${renderStudyStatus()}
       </section>
 
       ${
-        currentRecord
-          ? `
-            <article class="panel study-case ${currentRecord.result}">
-              <header class="study-case-header">
-                <span class="result-badge ${currentRecord.result}">${escapeHtml(currentRecord.resultText)}</span>
-                <h2>${escapeHtml(currentRecord.title)}</h2>
-                <p class="meta-line">
-                  <span>${escapeHtml(currentRecord.category)}</span>
-                  <span>${escapeHtml(currentRecord.location || "地区待补充")}</span>
-                  <span>ID: ${escapeHtml(currentRecord.id)}</span>
-                </p>
-              </header>
-
-              <section class="detail-section">
-                <h3>案例摘要</h3>
-                <p>${escapeHtml(currentRecord.summary || "暂无摘要")}</p>
-              </section>
-
-              <section class="detail-grid">
-                ${renderDetailMeta("投资金额", currentRecord.investment)}
-                ${renderDetailMeta("月盈利", currentRecord.monthlyProfit)}
-                ${renderDetailMeta("月亏损", currentRecord.monthlyLoss)}
-                ${renderDetailMeta("经营时长", currentRecord.businessTime)}
-              </section>
-
-              ${
-                currentRecord.keyPoints.length > 0
-                  ? `
-                    <section class="detail-section">
-                      <h3>关键要点</h3>
-                      <ul class="points">
-                        ${currentRecord.keyPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
-                      </ul>
-                    </section>
-                  `
-                  : ""
-              }
-
-              ${DETAIL_SECTIONS.map((item) => renderDetailSection(item.label, currentRecord[item.key])).join("")}
-
-              <section class="study-actions">
-                <button type="button" class="study-secondary-button" data-study-nav="-1" ${canPrev ? "" : "disabled"}>
-                  上一条
-                </button>
-                <button type="button" class="study-primary-button" id="studyFavoriteToggle">
-                  ${isFavorite ? "取消收藏" : "收藏案例"}
-                </button>
-                <button type="button" class="study-secondary-button" data-study-nav="1" ${canNext ? "" : "disabled"}>
-                  下一条
-                </button>
-              </section>
-            </article>
-          `
-          : `
-            <section class="panel empty-panel">
-              <h2>当前模式暂无可学习案例</h2>
-              <p>请切换到“全部案例”继续学习，或先收藏一些案例。</p>
-            </section>
-          `
+        study.mode === "favorites"
+          ? renderStudyFavoriteList(favoriteRecords)
+          : renderStudyProgressPanel(currentRecord, isFavorite, canPrev, canNext)
       }
     </main>
+    ${studyDetailRecord ? renderDetailModal(studyDetailRecord) : ""}
   `;
 
   bindStudyEvents();
@@ -1030,6 +1018,143 @@ function renderStudyStatus() {
   }
 
   return "";
+}
+
+function renderStudyProgressPanel(currentRecord, isFavorite, canPrev, canNext) {
+  if (!currentRecord) {
+    return `
+      <section class="panel empty-panel">
+        <h2>暂无可学习案例</h2>
+        <p>请检查案例数据是否已正确加载。</p>
+      </section>
+    `;
+  }
+
+  return `
+    <article class="panel study-case ${currentRecord.result}">
+      <header class="study-case-header">
+        <span class="result-badge ${currentRecord.result}">${escapeHtml(currentRecord.resultText)}</span>
+        <h2>${escapeHtml(currentRecord.title)}</h2>
+        <p class="meta-line">
+          <span>${escapeHtml(currentRecord.category)}</span>
+          <span>${escapeHtml(currentRecord.location || "地区待补充")}</span>
+          <span>ID: ${escapeHtml(currentRecord.id)}</span>
+        </p>
+      </header>
+
+      <section class="detail-section">
+        <h3>案例摘要</h3>
+        <p>${escapeHtml(currentRecord.summary || "暂无摘要")}</p>
+      </section>
+
+      <section class="detail-grid">
+        ${renderDetailMeta("投资金额", currentRecord.investment)}
+        ${renderDetailMeta("月盈利", currentRecord.monthlyProfit)}
+        ${renderDetailMeta("月亏损", currentRecord.monthlyLoss)}
+        ${renderDetailMeta("经营时长", currentRecord.businessTime)}
+      </section>
+
+      ${
+        currentRecord.keyPoints.length > 0
+          ? `
+            <section class="detail-section">
+              <h3>关键要点</h3>
+              <ul class="points">
+                ${currentRecord.keyPoints.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}
+              </ul>
+            </section>
+          `
+          : ""
+      }
+
+      ${DETAIL_SECTIONS.map((item) => renderDetailSection(item.label, currentRecord[item.key])).join("")}
+
+      <section class="study-actions">
+        <button type="button" class="study-secondary-button" data-study-nav="-1" ${canPrev ? "" : "disabled"}>
+          上一条
+        </button>
+        <button type="button" class="study-primary-button" id="studyFavoriteToggle">
+          ${isFavorite ? "取消收藏" : "收藏案例"}
+        </button>
+        <button type="button" class="study-secondary-button" data-study-nav="1" ${canNext ? "" : "disabled"}>
+          下一条
+        </button>
+      </section>
+    </article>
+  `;
+}
+
+function renderStudyFavoriteList(favorites) {
+  if (favorites.length === 0) {
+    return `
+      <section class="panel empty-panel">
+        <h2>当前没有收藏案例</h2>
+        <p>请先在“全部案例”模式里收藏，再回到这里集中复习。</p>
+      </section>
+    `;
+  }
+
+  return `
+    <section class="cards study-favorite-cards">
+      ${favorites.map((item) => renderStudyFavoriteCard(item)).join("")}
+    </section>
+  `;
+}
+
+function renderStudyFavoriteCard(item) {
+  const points = item.keyPoints.slice(0, 3);
+
+  return `
+    <article class="card ${item.result}">
+      <div class="card-header">
+        <span class="result-badge ${item.result}">${escapeHtml(item.resultText)}</span>
+        <h2>${escapeHtml(item.title)}</h2>
+      </div>
+      <p class="meta-line">
+        <span>${escapeHtml(item.category)}</span>
+        <span>${escapeHtml(item.location || "地区待补充")}</span>
+        <span>ID: ${escapeHtml(item.id)}</span>
+      </p>
+      <p class="summary">${escapeHtml(item.summary || "暂无摘要")}</p>
+      ${
+        points.length > 0
+          ? `<ul class="points">${points.map((point) => `<li>${escapeHtml(point)}</li>`).join("")}</ul>`
+          : ""
+      }
+      <div class="tag-row">
+        ${renderMetaTag("投资", item.investment)}
+        ${renderMetaTag("月盈利", item.monthlyProfit)}
+        ${renderMetaTag("月亏损", item.monthlyLoss)}
+      </div>
+      <div class="study-favorite-actions">
+        <button class="detail-button" type="button" data-study-open-detail="${escapeHtml(item.id)}">查看详情</button>
+      </div>
+    </article>
+  `;
+}
+
+function openStudyDetailModal(caseId) {
+  const targetId = String(caseId || "").trim();
+  if (!targetId) {
+    return;
+  }
+
+  const exists = state.cases.some((item) => item.id === targetId);
+  if (!exists) {
+    return;
+  }
+
+  state.study.activeDetailCaseId = targetId;
+  render();
+}
+
+function closeStudyDetailModal() {
+  if (!state.study.activeDetailCaseId) {
+    return;
+  }
+
+  state.study.activeDetailCaseId = "";
+  render();
 }
 
 function bindStudyEvents() {
@@ -1082,6 +1207,42 @@ function bindStudyEvents() {
   if (favoriteButton) {
     favoriteButton.addEventListener("click", () => {
       void toggleStudyFavorite();
+    });
+  }
+
+  const openDetailButtons = document.querySelectorAll("[data-study-open-detail]");
+  for (const button of openDetailButtons) {
+    button.addEventListener("click", () => {
+      const caseId = button.dataset.studyOpenDetail || "";
+      if (caseId) {
+        openStudyDetailModal(caseId);
+      }
+    });
+  }
+
+  const detailFavoriteButtons = document.querySelectorAll("[data-detail-toggle-favorite]");
+  for (const button of detailFavoriteButtons) {
+    button.addEventListener("click", () => {
+      const caseId = button.dataset.detailToggleFavorite || "";
+      if (caseId) {
+        void toggleStudyFavoriteByCaseId(caseId);
+      }
+    });
+  }
+
+  const overlay = document.querySelector("[data-modal-overlay]");
+  if (overlay) {
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeStudyDetailModal();
+      }
+    });
+  }
+
+  const closeButtons = document.querySelectorAll("[data-close-modal]");
+  for (const button of closeButtons) {
+    button.addEventListener("click", () => {
+      closeStudyDetailModal();
     });
   }
 }
@@ -1155,11 +1316,12 @@ function applyStudyStateFromServer(data, learningId, secret) {
     Array.isArray(data.favorites) ? data.favorites.map((caseId) => String(caseId)) : []
   );
   state.study.mode = data.mode === "favorites" ? "favorites" : "all";
+  state.study.activeDetailCaseId = "";
   state.study.currentCaseId = data.current_case_id ? String(data.current_case_id) : "";
   state.study.currentIndex = toPositiveInt(data.current_index);
   state.study.error = "";
   state.study.autoResumeTried = true;
-  normalizeStudyPosition();
+  normalizeStudyProgressPosition();
 }
 
 function maybeAutoResumeStudy() {
@@ -1179,22 +1341,16 @@ function maybeAutoResumeStudy() {
   });
 }
 
-function getStudyCaseIds(mode) {
-  if (mode === "favorites") {
-    const ids = [];
-    for (const item of state.cases) {
-      if (state.study.favorites.has(item.id)) {
-        ids.push(item.id);
-      }
-    }
-    return ids;
-  }
-
+function getStudyAllCaseIds() {
   return state.cases.map((item) => item.id);
 }
 
-function normalizeStudyPosition() {
-  const caseIds = getStudyCaseIds(state.study.mode);
+function getStudyFavoriteRecords() {
+  return state.cases.filter((item) => state.study.favorites.has(item.id));
+}
+
+function normalizeStudyProgressPosition() {
+  const caseIds = getStudyAllCaseIds();
   if (caseIds.length === 0) {
     state.study.currentCaseId = "";
     state.study.currentIndex = 0;
@@ -1215,7 +1371,7 @@ function normalizeStudyPosition() {
 }
 
 function getStudyCurrentRecord() {
-  normalizeStudyPosition();
+  normalizeStudyProgressPosition();
   if (!state.study.currentCaseId) {
     return null;
   }
@@ -1223,11 +1379,11 @@ function getStudyCurrentRecord() {
 }
 
 function moveStudyStep(step) {
-  if (!state.study.active) {
+  if (!state.study.active || state.study.mode !== "all") {
     return;
   }
 
-  const caseIds = getStudyCaseIds(state.study.mode);
+  const caseIds = getStudyAllCaseIds();
   if (caseIds.length === 0) {
     return;
   }
@@ -1259,7 +1415,9 @@ function setStudyMode(mode) {
   }
 
   state.study.mode = mode;
-  normalizeStudyPosition();
+  if (mode === "all") {
+    normalizeStudyProgressPosition();
+  }
   render();
   void syncStudyProgress({ quiet: true });
 }
@@ -1273,10 +1431,30 @@ async function toggleStudyFavorite() {
   if (!currentRecord) {
     return;
   }
+  await toggleStudyFavoriteByCaseId(currentRecord.id);
+}
+
+async function toggleStudyFavoriteByCaseId(caseId, options = {}) {
+  if (!state.study.active) {
+    return;
+  }
+
+  const targetId = String(caseId || "").trim();
+  if (!targetId) {
+    return;
+  }
+
+  const inlineDetail = Boolean(options.inlineDetail);
+  const route = getRoute();
+  const useInlineUpdate = inlineDetail && route.type === "list" && Boolean(state.activeCaseId);
 
   state.study.error = "";
-  state.study.syncing = true;
-  render();
+  if (useInlineUpdate) {
+    setDetailFavoriteButtonsBusy(targetId, true);
+  } else {
+    state.study.syncing = true;
+    render();
+  }
 
   try {
     const result = await requestStudyApi("/api/study/favorites/toggle", {
@@ -1284,25 +1462,60 @@ async function toggleStudyFavorite() {
       body: {
         learning_id: state.study.learningId,
         secret: state.study.secret,
-        case_id: currentRecord.id
+        case_id: targetId
       }
     });
 
     if (result.favorited) {
-      state.study.favorites.add(currentRecord.id);
-      state.study.info = "已加入收藏";
+      state.study.favorites.add(targetId);
+      if (!useInlineUpdate) {
+        state.study.info = "已加入收藏";
+      }
     } else {
-      state.study.favorites.delete(currentRecord.id);
-      state.study.info = "已取消收藏";
+      state.study.favorites.delete(targetId);
+      if (!useInlineUpdate) {
+        state.study.info = "已取消收藏";
+      }
     }
 
-    normalizeStudyPosition();
-    await syncStudyProgress({ quiet: true });
+    if (useInlineUpdate) {
+      applyInlineDetailFavoriteState(targetId, result.favorited);
+    }
   } catch (error) {
     state.study.error = getErrorMessage(error);
+    if (useInlineUpdate) {
+      render();
+    }
   } finally {
-    state.study.syncing = false;
-    render();
+    if (useInlineUpdate) {
+      setDetailFavoriteButtonsBusy(targetId, false);
+    } else {
+      state.study.syncing = false;
+      render();
+    }
+  }
+}
+
+function setDetailFavoriteButtonsBusy(caseId, busy) {
+  const targetId = String(caseId || "").trim();
+  const detailFavoriteButtons = document.querySelectorAll("[data-detail-toggle-favorite]");
+  for (const button of detailFavoriteButtons) {
+    if ((button.dataset.detailToggleFavorite || "") !== targetId) {
+      continue;
+    }
+    button.disabled = Boolean(busy);
+  }
+}
+
+function applyInlineDetailFavoriteState(caseId, favorited) {
+  const targetId = String(caseId || "").trim();
+  const detailFavoriteButtons = document.querySelectorAll("[data-detail-toggle-favorite]");
+  for (const button of detailFavoriteButtons) {
+    if ((button.dataset.detailToggleFavorite || "") !== targetId) {
+      continue;
+    }
+    button.classList.toggle("is-favorited", Boolean(favorited));
+    button.textContent = favorited ? "取消收藏" : "收藏案例";
   }
 }
 
@@ -1310,6 +1523,8 @@ async function syncStudyProgress(options = {}) {
   if (!state.study.active) {
     return;
   }
+
+  normalizeStudyProgressPosition();
 
   const quiet = Boolean(options.quiet);
   if (!quiet) {
@@ -1434,6 +1649,7 @@ function createStudyState() {
     active: false,
     mode: "all",
     favorites: new Set(),
+    activeDetailCaseId: "",
     currentCaseId: "",
     currentIndex: 0,
     autoResumeTried: false,

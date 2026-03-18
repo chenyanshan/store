@@ -323,6 +323,21 @@ a {
   gap: 0.6rem;
 }
 
+.study-favorite-cards {
+  margin-top: 1rem;
+}
+
+.study-favorite-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.study-favorite-actions .detail-button {
+  margin-top: 0;
+}
+
 .search-form {
   margin-bottom: 0.95rem;
 }
@@ -450,15 +465,15 @@ a {
 
 .card {
   --card-line: #c9c0b2;
-  border: 0;
+  border: 1px solid rgba(201, 192, 178, 0.62);
   border-radius: 16px;
   background: #fffefb;
   padding: 0.95rem;
-  box-shadow: var(--shadow);
+  box-shadow: 0 4px 12px rgba(43, 41, 28, 0.06);
   animation: rise 380ms ease-out;
   position: relative;
   overflow: hidden;
-  transition: transform 140ms ease, box-shadow 140ms ease;
+  transition: transform 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
 .card::before {
@@ -470,8 +485,9 @@ a {
 }
 
 .card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 14px 30px rgba(43, 41, 28, 0.13);
+  transform: translateY(-1px);
+  border-color: rgba(191, 182, 166, 0.78);
+  box-shadow: 0 7px 16px rgba(43, 41, 28, 0.08);
 }
 
 .card.success {
@@ -578,6 +594,28 @@ a {
 
 .detail-button:hover {
   background: rgba(44, 98, 80, 0.2);
+}
+
+.detail-button:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+}
+
+.detail-modal-actions {
+  margin-top: 1rem;
+}
+
+.detail-modal-actions .detail-button {
+  margin-top: 0;
+}
+
+.detail-favorite-button.is-favorited {
+  color: #7f2222;
+  background: rgba(143, 46, 46, 0.14);
+}
+
+.detail-favorite-button.is-favorited:hover {
+  background: rgba(143, 46, 46, 0.22);
 }
 
 .card.success .detail-button {
@@ -952,7 +990,7 @@ a {
 
   .card:hover {
     transform: none;
-    box-shadow: 0 12px 26px rgba(43, 41, 28, 0.11);
+    box-shadow: 0 6px 14px rgba(43, 41, 28, 0.07);
   }
 
   .card::before {
