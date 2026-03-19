@@ -1225,7 +1225,7 @@ function bindStudyEvents() {
     button.addEventListener("click", () => {
       const caseId = button.dataset.detailToggleFavorite || "";
       if (caseId) {
-        void toggleStudyFavoriteByCaseId(caseId);
+        void toggleStudyFavoriteByCaseId(caseId, { inlineDetail: true });
       }
     });
   }
@@ -1446,7 +1446,12 @@ async function toggleStudyFavoriteByCaseId(caseId, options = {}) {
 
   const inlineDetail = Boolean(options.inlineDetail);
   const route = getRoute();
-  const useInlineUpdate = inlineDetail && route.type === "list" && Boolean(state.activeCaseId);
+  const useInlineUpdate =
+    inlineDetail &&
+    (
+      (route.type === "list" && Boolean(state.activeCaseId)) ||
+      (route.type === "study" && Boolean(state.study.activeDetailCaseId))
+    );
 
   state.study.error = "";
   if (useInlineUpdate) {
