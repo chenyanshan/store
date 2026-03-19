@@ -12,7 +12,12 @@ const CANONICAL_RESULTS = new Set(["success", "failure", "warning"]);
 
 function parseCasesFromDataJs(source) {
   try {
-    const parsed = Function('"use strict";\n' + source + "\nreturn cases;")();
+    const normalizedSource = source
+      .replace(/^\s*export\s+default\s+cases\s*;?\s*$/gm, "")
+      .replace(/^\s*export\s+const\s+cases\s*=/m, "const cases =")
+      .replace(/^\s*export\s+\{[^}]*cases[^}]*\}\s*;?\s*$/gm, "");
+
+    const parsed = Function('"use strict";\n' + normalizedSource + "\nreturn cases;")();
     if (!Array.isArray(parsed)) {
       throw new Error("`cases` is not an array.");
     }

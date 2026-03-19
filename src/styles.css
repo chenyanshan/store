@@ -637,6 +637,17 @@ a {
   background: rgba(44, 98, 80, 0.2);
 }
 
+.case-card-actions {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.case-card-actions .detail-button {
+  margin-top: 0;
+}
+
 .detail-button:disabled {
   opacity: 0.62;
   cursor: not-allowed;
@@ -684,6 +695,21 @@ a {
 
 .card.warning .detail-button:hover {
   background: rgba(154, 103, 21, 0.26);
+}
+
+.card .video-link-button,
+.study-case .video-link-button,
+.detail-modal-actions .video-link-button,
+.study-favorite-actions .video-link-button {
+  color: #2a4f8f;
+  background: rgba(42, 79, 143, 0.13);
+}
+
+.card .video-link-button:hover,
+.study-case .video-link-button:hover,
+.detail-modal-actions .video-link-button:hover,
+.study-favorite-actions .video-link-button:hover {
+  background: rgba(42, 79, 143, 0.22);
 }
 
 .inline-link {

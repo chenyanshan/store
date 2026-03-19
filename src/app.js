@@ -298,6 +298,7 @@ function normalizeCase(raw, index) {
     id: toText(raw?.id, String(index + 1)),
     title: toText(raw?.title, fallbackTitle),
     category: toText(raw?.category, "未分类"),
+    bvid: normalizeBvid(raw?.bvid),
     result,
     resultText: toText(raw?.resultText, RESULT_INFO[result].label + "案例"),
     location: toText(raw?.location, ""),
@@ -333,6 +334,21 @@ function toText(value, fallback) {
   }
   const text = String(value).trim();
   return text || fallback;
+}
+
+function normalizeBvid(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const matched = text.match(/BV[0-9A-Za-z]+/i);
+  if (!matched) {
+    return "";
+  }
+
+  const bvid = matched[0];
+  return "BV" + bvid.slice(2);
 }
 
 function normalizeArray(value) {
@@ -885,7 +901,10 @@ function renderCaseCard(item) {
         ${renderMetaTag("月盈利", item.monthlyProfit)}
         ${renderMetaTag("月亏损", item.monthlyLoss)}
       </div>
-      <button class="detail-button" type="button" data-open-detail="${escapeHtml(item.id)}">查看详情</button>
+      <div class="case-card-actions">
+        <button class="detail-button" type="button" data-open-detail="${escapeHtml(item.id)}">查看详情</button>
+        ${renderVideoLinkButton(item)}
+      </div>
     </article>
   `;
 }
@@ -895,6 +914,24 @@ function renderMetaTag(label, value) {
     return "";
   }
   return `<span class="meta-tag">${escapeHtml(label)}: ${escapeHtml(value)}</span>`;
+}
+
+function renderVideoLinkButton(record) {
+  const bvid = String(record?.bvid || "").trim();
+  if (!bvid) {
+    return "";
+  }
+
+  const href = getBilibiliVideoUrl(bvid);
+  return `
+    <a class="detail-button video-link-button" href="${escapeHtml(href)}" target="_blank" rel="noopener noreferrer">
+      观看视频
+    </a>
+  `;
+}
+
+function getBilibiliVideoUrl(bvid) {
+  return "https://www.bilibili.com/video/" + encodeURIComponent(String(bvid).trim());
 }
 
 function renderEmptyState() {
@@ -909,6 +946,18 @@ function renderEmptyState() {
 function renderDetailModal(record) {
   const canFavorite = state.study.active;
   const isFavorite = canFavorite && state.study.favorites.has(record.id);
+  const videoButton = renderVideoLinkButton(record);
+  const favoriteButton = canFavorite
+    ? `
+      <button
+        class="detail-button detail-favorite-button ${isFavorite ? "is-favorited" : ""}"
+        type="button"
+        data-detail-toggle-favorite="${escapeHtml(record.id)}"
+      >
+        ${isFavorite ? "取消收藏" : "收藏案例"}
+      </button>
+    `
+    : "";
 
   return `
     <div class="modal-overlay" data-modal-overlay role="presentation">
@@ -965,16 +1014,11 @@ function renderDetailModal(record) {
         }
 
         ${
-          canFavorite
+          videoButton || favoriteButton
             ? `
               <section class="detail-modal-actions">
-                <button
-                  class="detail-button detail-favorite-button ${isFavorite ? "is-favorited" : ""}"
-                  type="button"
-                  data-detail-toggle-favorite="${escapeHtml(record.id)}"
-                >
-                  ${isFavorite ? "取消收藏" : "收藏案例"}
-                </button>
+                ${videoButton}
+                ${favoriteButton}
               </section>
             `
             : ""
@@ -1203,6 +1247,7 @@ function renderStudyProgressPanel(currentRecord, isFavorite, canPrev, canNext) {
         <button type="button" class="study-secondary-button" data-study-nav="1" ${canNext ? "" : "disabled"}>
           下一条
         </button>
+        ${renderVideoLinkButton(currentRecord)}
       </section>
     </article>
   `;
@@ -1252,6 +1297,7 @@ function renderStudyFavoriteCard(item) {
       </div>
       <div class="study-favorite-actions">
         <button class="detail-button" type="button" data-study-open-detail="${escapeHtml(item.id)}">查看详情</button>
+        ${renderVideoLinkButton(item)}
       </div>
     </article>
   `;
@@ -1873,6 +1919,7 @@ function buildCaseSearchIndex(record) {
   const sources = [
     record.title,
     record.category,
+    record.bvid,
     record.resultText,
     record.location,
     record.investment,
