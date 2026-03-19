@@ -463,6 +463,47 @@ a {
   gap: 0.9rem;
 }
 
+.list-pagination {
+  margin-top: 1rem;
+  padding: 0.7rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.page-button {
+  border: 1px solid #c8c0b2;
+  border-radius: 10px;
+  padding: 0.44rem 0.72rem;
+  font: inherit;
+  background: #fffdf8;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.page-button:hover {
+  background: #f6f0e4;
+}
+
+.page-button.active {
+  border-color: #5f6756;
+  background: #ece6d8;
+  font-weight: 700;
+  cursor: default;
+}
+
+.page-button:disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.page-ellipsis {
+  color: var(--muted);
+  padding: 0 0.2rem;
+}
+
 .card {
   --card-line: #c9c0b2;
   border: 1px solid rgba(201, 192, 178, 0.62);

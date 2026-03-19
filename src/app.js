@@ -25,6 +25,8 @@ const STUDY_MODES = {
   favorites: "仅看收藏"
 };
 
+const LIST_PAGE_SIZE = 12;
+
 const SUMMARY_DATA = {
   coreQuote: "开实体店的本质是一场「基于真实客流数据的成本收益算账游戏」。",
   formula:
@@ -162,6 +164,7 @@ const state = {
   category: "all",
   result: "all",
   searchQuery: "",
+  page: 1,
   activeCaseId: "",
   study: createStudyState()
 };
@@ -344,6 +347,8 @@ function syncFiltersFromUrl() {
   state.category = params.get("category") || "all";
   state.result = params.get("result") || "all";
   state.searchQuery = (params.get("q") || "").trim();
+  const page = Number(params.get("page") || "1");
+  state.page = Number.isInteger(page) && page > 0 ? page : 1;
   state.activeCaseId = params.get("detail") || "";
 }
 
@@ -360,6 +365,9 @@ function clampFilters() {
   if (state.activeCaseId && !state.cases.some((item) => item.id === state.activeCaseId)) {
     state.activeCaseId = "";
   }
+
+  const maxPage = getMaxListPage(getFilteredCases().length);
+  state.page = clampInt(state.page, 1, maxPage);
 }
 
 function getRoute() {
@@ -401,6 +409,10 @@ function buildFilterSearch(options = {}) {
     params.set("q", state.searchQuery);
   }
 
+  if (state.page > 1) {
+    params.set("page", String(state.page));
+  }
+
   if (includeDetail && state.activeCaseId) {
     params.set("detail", state.activeCaseId);
   }
@@ -410,10 +422,30 @@ function buildFilterSearch(options = {}) {
 }
 
 function applyFilters() {
+  state.page = 1;
   state.activeCaseId = "";
   navigate("/" + buildFilterSearch({ includeDetail: false }), {
     replace: true,
     scroll: false
+  });
+}
+
+function goToListPage(page) {
+  const target = Number(page);
+  if (!Number.isInteger(target)) {
+    return;
+  }
+
+  const maxPage = getMaxListPage(getFilteredCases().length);
+  const nextPage = clampInt(target, 1, maxPage);
+  if (nextPage === state.page) {
+    return;
+  }
+
+  state.page = nextPage;
+  state.activeCaseId = "";
+  navigate("/" + buildFilterSearch({ includeDetail: false }), {
+    replace: false
   });
 }
 
@@ -448,6 +480,35 @@ function getFilteredCases() {
       searchTokens.every((token) => item.searchIndex.includes(token));
     return categoryMatched && resultMatched && searchMatched;
   });
+}
+
+function getMaxListPage(totalCount) {
+  return Math.max(1, Math.ceil(totalCount / LIST_PAGE_SIZE));
+}
+
+function getPagedCases(records, page) {
+  const start = (page - 1) * LIST_PAGE_SIZE;
+  return records.slice(start, start + LIST_PAGE_SIZE);
+}
+
+function buildPaginationItems(currentPage, totalPages) {
+  const pages = [];
+  let lastPage = 0;
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const shouldShow = page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+    if (!shouldShow) {
+      continue;
+    }
+
+    if (lastPage !== 0 && page - lastPage > 1) {
+      pages.push("ellipsis");
+    }
+    pages.push(page);
+    lastPage = page;
+  }
+
+  return pages;
 }
 
 function getCategoryCounts() {
@@ -573,6 +634,10 @@ function renderList() {
   document.title = "零售创业案例数据库";
 
   const filteredCases = getFilteredCases();
+  const totalPages = getMaxListPage(filteredCases.length);
+  const currentPage = clampInt(state.page, 1, totalPages);
+  state.page = currentPage;
+  const pagedCases = getPagedCases(filteredCases, currentPage);
   const resultCounts = countByResult(state.cases);
   const categories = getCategoryCounts();
   const activeRecord = state.cases.find((item) => item.id === state.activeCaseId) || null;
@@ -630,12 +695,15 @@ function renderList() {
           ${renderResultFilterButton("warning", resultCounts.warning)}
         </div>
 
-        <p class="hint">当前展示 ${filteredCases.length} 条案例${state.searchQuery ? `，关键词：${escapeHtml(state.searchQuery)}` : ""}</p>
+        <p class="hint">当前筛选 ${filteredCases.length} 条案例${state.searchQuery ? `，关键词：${escapeHtml(state.searchQuery)}` : ""}</p>
+        <p class="hint">分页：第 ${currentPage} / ${totalPages} 页（每页 ${LIST_PAGE_SIZE} 条）</p>
       </section>
 
       <section class="cards">
-        ${filteredCases.length > 0 ? filteredCases.map((item) => renderCaseCard(item)).join("") : renderEmptyState()}
+        ${filteredCases.length > 0 ? pagedCases.map((item) => renderCaseCard(item)).join("") : renderEmptyState()}
       </section>
+
+      ${filteredCases.length > 0 ? renderListPagination(currentPage, totalPages) : ""}
     </main>
     ${activeRecord ? renderDetailModal(activeRecord) : ""}
   `;
@@ -681,6 +749,14 @@ function bindListEvents() {
     });
   }
 
+  const pageButtons = document.querySelectorAll("[data-page-target]");
+  for (const button of pageButtons) {
+    button.addEventListener("click", () => {
+      const targetPage = Number(button.dataset.pageTarget || "1");
+      goToListPage(targetPage);
+    });
+  }
+
   const detailButtons = document.querySelectorAll("[data-open-detail]");
   for (const button of detailButtons) {
     button.addEventListener("click", () => {
@@ -716,6 +792,54 @@ function bindListEvents() {
       closeDetailModal();
     });
   }
+}
+
+function renderListPagination(currentPage, totalPages) {
+  if (totalPages <= 1) {
+    return "";
+  }
+
+  const items = buildPaginationItems(currentPage, totalPages);
+  return `
+    <nav class="list-pagination panel" aria-label="案例分页">
+      <button
+        type="button"
+        class="page-button"
+        data-page-target="${currentPage - 1}"
+        ${currentPage <= 1 ? "disabled" : ""}
+      >
+        上一页
+      </button>
+      ${items
+        .map((item) => {
+          if (item === "ellipsis") {
+            return `<span class="page-ellipsis">…</span>`;
+          }
+
+          const page = Number(item);
+          const active = page === currentPage;
+          return `
+            <button
+              type="button"
+              class="page-button ${active ? "active" : ""}"
+              data-page-target="${page}"
+              ${active ? "disabled" : ""}
+            >
+              ${page}
+            </button>
+          `;
+        })
+        .join("")}
+      <button
+        type="button"
+        class="page-button"
+        data-page-target="${currentPage + 1}"
+        ${currentPage >= totalPages ? "disabled" : ""}
+      >
+        下一页
+      </button>
+    </nav>
+  `;
 }
 
 function renderStatCard(label, count, tone) {
